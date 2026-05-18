@@ -1,6 +1,6 @@
 $user = "arthurboby"
 $repo = "Pico-Tools"
-$urlApi = "https://api.github.com"
+$urlApi = "https://github.com"
 
 # Função para falar com a tela do RP2040
 function Log-Pico($texto, $porcentagem) {
