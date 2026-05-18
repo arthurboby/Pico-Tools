@@ -2,7 +2,7 @@
 $user = "arthurboby"
 $repo = "Pico-Tools"
 # ABAIXO: O link completo que estava faltando!
-$urlApi = "https://github.com"
+$urlApi = "https://api.github.com"
 
 # Forçar segurança para o GitHub não bloquear o PC da escola
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
