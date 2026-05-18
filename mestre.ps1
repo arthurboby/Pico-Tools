@@ -1,7 +1,7 @@
 # Configurações do seu Repo
 $user = "arthurboby"
 $repo = "Pico-Tools"
-$urlApi = "https://github.com"
+$urlApi = "https://api.github.com"
 
 function Mostrar-Menu-Dinamico($caminho) {
     Clear-Host
