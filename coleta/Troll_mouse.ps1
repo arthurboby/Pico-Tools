@@ -3,7 +3,7 @@ $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 $centerX = $screen.Width / 2
 $centerY = $screen.Height / 2
 
-Write-Host "Inversão de eixos ativada! Pressione CTRL+C para parar." -ForegroundColor Red
+Write-Host "Inversão de eixos ativada! agora seu mouse está travado para sempre." -ForegroundColor Red
 
 # Loop que dura 30 segundos (para não travar o PC pra sempre)
 $timer = [System.Diagnostics.Stopwatch]::StartNew()
