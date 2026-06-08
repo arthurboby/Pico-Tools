@@ -1,4 +1,6 @@
-# mestre.ps1 - GitHub Explorer (VERSÃO QUE FUNCIONA)
+# mestre.ps1 - GitHub Explorer (VERSÃO CORRIGIDA COM AUTO-AUTORIZAÇÃO)
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
 $u = "arthurboby"
 $r = "Pico-Tools"
 
@@ -62,8 +64,11 @@ $button.Add_Click({
         
         $confirmar = [System.Windows.Forms.MessageBox]::Show("Baixar e executar '$caminho'?", "Confirmar", "YesNo")
         if ($confirmar -eq "Yes") {
+            # Baixa o script
             Invoke-WebRequest -Uri $url -OutFile $tempFile -UseBasicParsing
-            & $tempFile
+            
+            # Executa o script com bypass para esta execução específica
+            & powershell -ExecutionPolicy Bypass -File $tempFile
         }
     } else {
         [System.Windows.Forms.MessageBox]::Show("Selecione um script primeiro!", "Aviso")
