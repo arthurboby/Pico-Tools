@@ -1,13 +1,14 @@
-# mestre.ps1 - Versão ULTRA SIMPLES (abre o script no Bloco de Notas para você executar manualmente)
+# mestre.ps1 - GitHub Explorer (COM EXECUÇÃO GARANTIDA)
 $u = "arthurboby"
 $r = "Pico-Tools"
 
 Add-Type -AssemblyName System.Windows.Forms,System.Drawing
 
-# Busca arquivos .ps1
+# Busca todos os arquivos .ps1 do repositório
 $api = "https://api.github.com/repos/$u/$r/contents"
 $res = Invoke-RestMethod -Uri $api -Method Get -UseBasicParsing
 
+# Função para buscar arquivos recursivamente
 $todosArquivos = @()
 foreach ($item in $res) {
     if ($item.type -eq "file" -and $item.name -like "*.ps1") {
@@ -24,29 +25,54 @@ foreach ($item in $res) {
     }
 }
 
+if ($todosArquivos.Count -eq 0) {
+    [System.Windows.Forms.MessageBox]::Show("Nenhum script .ps1 encontrado!", "Erro")
+    exit
+}
+
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "GitHub Explorer"
-$form.Size = "550,500"
+$form.Text = "GitHub Explorer - Pico-Tools"
+$form.Size = New-Object System.Drawing.Size(550, 500)
+$form.StartPosition = "CenterScreen"
+
+$label = New-Object System.Windows.Forms.Label
+$label.Text = "Selecione um script PowerShell para executar:"
+$label.Location = New-Object System.Drawing.Point(20, 20)
+$label.Size = New-Object System.Drawing.Size(500, 30)
+$form.Controls.Add($label)
 
 $listBox = New-Object System.Windows.Forms.ListBox
-$listBox.Location = "20,20"
-$listBox.Size = "490,380"
+$listBox.Location = New-Object System.Drawing.Point(20, 60)
+$listBox.Size = New-Object System.Drawing.Size(490, 320)
 foreach ($arquivo in $todosArquivos) {
     [void]$listBox.Items.Add($arquivo.path)
 }
 $form.Controls.Add($listBox)
 
 $button = New-Object System.Windows.Forms.Button
-$button.Text = "ABRIR SCRIPT (para executar manualmente)"
-$button.Location = "20,420"
-$button.Size = "490,40"
+$button.Text = "▶ EXECUTAR SCRIPT SELECIONADO"
+$button.Location = New-Object System.Drawing.Point(20, 400)
+$button.Size = New-Object System.Drawing.Size(490, 50)
 $button.Add_Click({
     if ($listBox.SelectedItem) {
         $caminho = $listBox.SelectedItem
         $url = "https://raw.githubusercontent.com/$u/$r/main/$caminho"
         $tempFile = "$env:TEMP\$([System.IO.Path]::GetFileName($caminho))"
-        Invoke-WebRequest -Uri $url -OutFile $tempFile -UseBasicParsing
-        Invoke-Item $tempFile  # Abre o script no editor padrão
+        
+        $confirmar = [System.Windows.Forms.MessageBox]::Show("Baixar e executar '$caminho'?", "Confirmar", "YesNo")
+        if ($confirmar -eq "Yes") {
+            # Baixa o script
+            Write-Host "Baixando $caminho..." -ForegroundColor Yellow
+            Invoke-WebRequest -Uri $url -OutFile $tempFile -UseBasicParsing
+            
+            # Fecha o menu atual
+            $form.Close()
+            
+            # Executa o script em uma NOVA janela do PowerShell
+            Start-Process powershell.exe -ArgumentList "-ExecutionPolicy Bypass -File `"$tempFile`""
+        }
+    } else {
+        [System.Windows.Forms.MessageBox]::Show("Selecione um script primeiro!", "Aviso")
     }
 })
 $form.Controls.Add($button)
