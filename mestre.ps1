@@ -1,79 +1,128 @@
-# Configurações do seu Repo (BitRun.OS)
-$user = "arthurboby"
-$repo = "Pico-Tools"
-# ABAIXO: O link completo que estava faltando!
-$urlApi = "https://api.github.com"
+# Mestre.ps1 - GitHub Explorer para Pico-Tools
+$u = "arthurboby"
+$r = "Pico-Tools"
+$b = "main"
 
-# Forçar segurança para o GitHub não bloquear o PC da escola
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 
-function Log-Pico($texto, $porcentagem) {
-    try {
-        $portName = (Get-PnpDevice -FriendlyName "*USB Serial Port*" -Status OK).Caption -replace ".*\(|\)"
-        $port = New-Object System.IO.Ports.SerialPort $portName, 9600, None, 8, one
-        $port.Open()
-        $port.WriteLine("$($texto):$($porcentagem)")
-        $port.Close()
-    } catch {}
+# API do GitHub para buscar arquivos
+$api = "https://api.github.com/repos/$u/$r/git/trees/$b?recursive=1"
+
+try {
+    Write-Host "Conectando ao GitHub..." -ForegroundColor Cyan
+    $res = Invoke-RestMethod -Uri $api -Method Get
+    $files = $res.tree | Where-Object { $_.path -like "*.ps1" -and $_.type -eq "blob" }
+    
+    if ($files.Count -eq 0) {
+        Write-Host "Nenhum arquivo .ps1 encontrado!" -ForegroundColor Red
+        Read-Host "Pressione Enter para sair"
+        exit
+    }
+} catch {
+    Write-Host "Erro ao conectar ao GitHub: $_" -ForegroundColor Red
+    Read-Host "Pressione Enter para sair"
+    exit
 }
 
-function Mostrar-Menu-Dinamico($caminho) {
-    Log-Pico "Lendo Pasta" 30
-    # O segredo está no "$urlApi/$caminho"
-    $arquivos = Invoke-RestMethod -Uri "$urlApi/$caminho"
-    $lista = $arquivos | Where-Object { $_.type -eq "file" }
+# Criar formulário
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "GitHub Explorer - Pico-Tools"
+$form.Size = New-Object System.Drawing.Size(550, 500)
+$form.StartPosition = "CenterScreen"
+$form.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
 
-    Clear-Host
-    Write-Host "=== BitRun.OS // $caminho ===" -ForegroundColor Cyan
-    if ($lista.Count -eq 0) { 
-        Write-Host "Pasta vazia ou link da API incorreto." -ForegroundColor Red 
-    } else {
-        for ($i=0; $i -lt $lista.Count; $i++) {
-            Write-Host "($($i+1)) $($lista[$i].name)"
-        }
-    }
-    Write-Host "(0) Voltar"
+# Título
+$label = New-Object System.Windows.Forms.Label
+$label.Text = "Selecione um script PowerShell para executar:"
+$label.Location = New-Object System.Drawing.Point(20, 20)
+$label.Size = New-Object System.Drawing.Size(500, 25)
+$label.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($label)
 
-    $opc = Read-Host "`nEscolha uma opção"
-    if ($opc -eq "0" -or $opc -eq "") { return }
+# Lista de scripts
+$listBox = New-Object System.Windows.Forms.ListBox
+$listBox.Location = New-Object System.Drawing.Point(20, 55)
+$listBox.Size = New-Object System.Drawing.Size(490, 300)
+$listBox.Font = New-Object System.Drawing.Font("Consolas", 10)
 
-    $escolhido = $lista[[int]$opc - 1]
-    Log-Pico "Baixando..." 60
-    
-    $conteudo = iwr -useb $escolhido.download_url
-    Log-Pico "Executando" 90
-    
-    if ($escolhido.name.EndsWith(".ps1")) {
-        iex $conteudo
-    } else {
-        $destino = "$home\Desktop\$($escolhido.name)"
-        iwr -useb $escolhido.download_url -OutFile $destino
-        Write-Host "Arquivo salvo na Área de Trabalho!" -ForegroundColor Green
-    }
-    Log-Pico "Concluido" 100
-    pause
+foreach ($file in $files) {
+    [void]$listBox.Items.Add($file.path)
 }
 
-# Menu Principal no Terminal
-do {
-    Log-Pico "Menu Inicial" 10
-    Clear-Host
-    Write-Host "=== PICO-FLIPPER TERMINAL INTERFACE ===" -ForegroundColor Green
-    Write-Host "(1) Pessoal"
-    Write-Host "(2) Escola"
-    Write-Host "(3) Coleta"
-    Write-Host "(4) Limpar Rastros e Sair"
-    $base = Read-Host "`nOpção"
+$form.Controls.Add($listBox)
 
-    switch ($base) {
-        "1" { Mostrar-Menu-Dinamico "pessoal" }
-        "2" { Mostrar-Menu-Dinamico "escola" }
-        "3" { Mostrar-Menu-Dinamico "coleta" }
-        "4" { 
-            Log-Pico "Limpando..." 50
-            Clear-History
-            Log-Pico "Adeus" 100
-            exit 
+# Botão Executar
+$btnRun = New-Object System.Windows.Forms.Button
+$btnRun.Text = "▶ EXECUTAR SCRIPT SELECIONADO"
+$btnRun.Location = New-Object System.Drawing.Point(20, 370)
+$btnRun.Size = New-Object System.Drawing.Size(240, 40)
+$btnRun.BackColor = [System.Drawing.Color]::FromArgb(50, 200, 50)
+$btnRun.ForeColor = [System.Drawing.Color]::White
+$btnRun.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+
+$btnRun.Add_Click({
+    if ($listBox.SelectedItem) {
+        $selected = $listBox.SelectedItem
+        $url = "https://raw.githubusercontent.com/$u/$r/$b/$selected"
+        $tempFile = [System.IO.Path]::Combine($env:TEMP, [System.IO.Path]::GetFileName($selected))
+        
+        $result = [System.Windows.Forms.MessageBox]::Show(
+            "Deseja baixar e executar '$selected'?`n`nURL: $url",
+            "Confirmar Execução",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Question
+        )
+        
+        if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+            try {
+                Write-Host "Baixando $selected..." -ForegroundColor Yellow
+                Invoke-WebRequest -Uri $url -OutFile $tempFile
+                Write-Host "Executando $selected..." -ForegroundColor Green
+                & $tempFile
+            } catch {
+                [System.Windows.Forms.MessageBox]::Show(
+                    "Erro ao executar: $_",
+                    "Erro",
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Error
+                )
+            }
         }
+    } else {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Selecione um script primeiro!",
+            "Aviso",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        )
     }
-} while ($true)
+})
+
+$form.Controls.Add($btnRun)
+
+# Botão Cancelar
+$btnCancel = New-Object System.Windows.Forms.Button
+$btnCancel.Text = "✖ CANCELAR"
+$btnCancel.Location = New-Object System.Drawing.Point(280, 370)
+$btnCancel.Size = New-Object System.Drawing.Size(240, 40)
+$btnCancel.BackColor = [System.Drawing.Color]::FromArgb(200, 50, 50)
+$btnCancel.ForeColor = [System.Drawing.Color]::White
+$btnCancel.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+
+$btnCancel.Add_Click({
+    $form.Close()
+})
+
+$form.Controls.Add($btnCancel)
+
+# Informações
+$info = New-Object System.Windows.Forms.Label
+$info.Text = "Repositório: $u/$r | Branch: $b | Total: $($files.Count) scripts"
+$info.Location = New-Object System.Drawing.Point(20, 430)
+$info.Size = New-Object System.Drawing.Size(500, 25)
+$info.Font = New-Object System.Drawing.Font("Arial", 8)
+$info.ForeColor = [System.Drawing.Color]::Gray
+$form.Controls.Add($info)
+
+# Mostrar formulário
+$form.ShowDialog() | Out-Null
