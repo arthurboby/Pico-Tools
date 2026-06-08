@@ -1,30 +1,42 @@
-# mestre.ps1 - GitHub Explorer (CORRIGIDO)
+# mestre.ps1 - GitHub Explorer (API de CONTEÚDO - FUNCIONA!)
 $u = "arthurboby"
 $r = "Pico-Tools"
-$b = "main"
 
 Add-Type -AssemblyName System.Windows.Forms,System.Drawing
 
-# 👇 URL CORRETA da API do GitHub
-$api = "https://api.github.com/repos/$u/$r/git/trees/$b?recursive=1"
+# Função para listar todos os .ps1 (incluindo dentro de pastas)
+function Buscar-PS1 {
+    param($itens, $caminho = "")
+    $resultados = @()
+    foreach ($item in $itens) {
+        if ($item.type -eq "file" -and $item.name -like "*.ps1") {
+            $resultados += [PSCustomObject]@{path = if ($caminho) { "$caminho/$($item.name)" } else { $item.name } }
+        }
+        elseif ($item.type -eq "dir") {
+            $subApi = "https://api.github.com/repos/$u/$r/contents/$($item.path)"
+            $subItens = Invoke-RestMethod -Uri $subApi -Method Get -UseBasicParsing
+            $resultados += Buscar-PS1 -itens $subItens -caminho $item.path
+        }
+    }
+    return $resultados
+}
 
 try {
     Write-Host "Conectando ao GitHub..." -ForegroundColor Cyan
+    $api = "https://api.github.com/repos/$u/$r/contents"
     $res = Invoke-RestMethod -Uri $api -Method Get -UseBasicParsing
-    
-    # Filtra apenas arquivos .ps1
-    $files = $res.tree | Where-Object { $_.path -like "*.ps1" -and $_.type -eq "blob" }
+    $files = Buscar-PS1 -itens $res
     
     if ($files.Count -eq 0) {
-        [System.Windows.Forms.MessageBox]::Show("Nenhum arquivo .ps1 encontrado no repositorio!", "Erro")
+        [System.Windows.Forms.MessageBox]::Show("Nenhum arquivo .ps1 encontrado!", "Erro")
         exit
     }
 } catch {
-    [System.Windows.Forms.MessageBox]::Show("Erro ao conectar ao GitHub: $_", "Erro")
+    [System.Windows.Forms.MessageBox]::Show("Erro ao conectar: $_", "Erro")
     exit
 }
 
-# Interface
+# Interface gráfica
 $f = New-Object System.Windows.Forms.Form
 $f.Text = "GitHub Explorer - Pico-Tools"
 $f.Size = New-Object System.Drawing.Size(550, 500)
@@ -51,13 +63,17 @@ $btn.Size = New-Object System.Drawing.Size(490, 40)
 $btn.Add_Click({
     if ($lb.SelectedItem) {
         $p = $lb.SelectedItem
-        $dl = "https://raw.githubusercontent.com/$u/$r/$b/$p"
+        $dl = "https://raw.githubusercontent.com/$u/$r/main/$p"
         $tmp = "$env:TEMP\$([System.IO.Path]::GetFileName($p))"
         
         $result = [System.Windows.Forms.MessageBox]::Show("Baixar e executar '$p'?", "Confirmar", "YesNo")
         if ($result -eq "Yes") {
-            Invoke-WebRequest -Uri $dl -OutFile $tmp -UseBasicParsing
-            & $tmp
+            try {
+                Invoke-WebRequest -Uri $dl -OutFile $tmp -UseBasicParsing
+                & $tmp
+            } catch {
+                [System.Windows.Forms.MessageBox]::Show("Erro ao executar: $_", "Erro")
+            }
         }
     } else {
         [System.Windows.Forms.MessageBox]::Show("Selecione um script primeiro!", "Aviso")
