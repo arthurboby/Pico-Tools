@@ -1,6 +1,4 @@
-# mestre.ps1 - GitHub Explorer (VERSÃO CORRIGIDA COM AUTO-AUTORIZAÇÃO)
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-
+# mestre.ps1 - GitHub Explorer (EXECUÇÃO GARANTIDA)
 $u = "arthurboby"
 $r = "Pico-Tools"
 
@@ -67,8 +65,12 @@ $button.Add_Click({
             # Baixa o script
             Invoke-WebRequest -Uri $url -OutFile $tempFile -UseBasicParsing
             
-            # Executa o script com bypass para esta execução específica
-            & powershell -ExecutionPolicy Bypass -File $tempFile
+            # 👇 FORMA CORRETA de executar com bypass
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = "powershell.exe"
+            $psi.Arguments = "-ExecutionPolicy Bypass -File `"$tempFile`""
+            $psi.UseShellExecute = $false
+            [System.Diagnostics.Process]::Start($psi)
         }
     } else {
         [System.Windows.Forms.MessageBox]::Show("Selecione um script primeiro!", "Aviso")
