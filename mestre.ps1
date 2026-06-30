@@ -1,80 +1,136 @@
-# mestre.ps1 - GitHub Explorer (COM EXECUÇÃO GARANTIDA)
-$u = "arthurboby"
-$r = "Pico-Tools"
+# =============================================
+# MESTRE.PS1 - Orquestrador de Scripts Pico-Tools
+# =============================================
 
-Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+# Configurações do Repositório
+$Dono = "arthurboby"
+$Repo = "Pico-Tools"
+$Branch = "main"
+$UrlBase = "https://raw.githubusercontent.com/$Dono/$Repo/$Branch"
 
-# Busca todos os arquivos .ps1 do repositório
-$api = "https://api.github.com/repos/$u/$r/contents"
-$res = Invoke-RestMethod -Uri $api -Method Get -UseBasicParsing
+# Cores para o Menu
+$CorTitulo = "Cyan"
+$CorMenu = "Yellow"
+$CorDestaque = "Green"
 
-# Função para buscar arquivos recursivamente
-$todosArquivos = @()
-foreach ($item in $res) {
-    if ($item.type -eq "file" -and $item.name -like "*.ps1") {
-        $todosArquivos += $item
+function Mostrar-Menu {
+    Clear-Host
+    Write-Host "=========================================" -ForegroundColor $CorTitulo
+    Write-Host "  GERENCIADOR PICO-TOOLS - LABORATÓRIO" -ForegroundColor $CorTitulo
+    Write-Host "=========================================" -ForegroundColor $CorTitulo
+    Write-Host ""
+    Write-Host "Selecione a categoria:" -ForegroundColor $CorMenu
+    Write-Host "[1] 🛠️  Ferramentas da Escola (Produtividade)" -ForegroundColor White
+    Write-Host "[2] 💻 Ferramentas Pessoais (Dev & Automação)" -ForegroundColor White
+    Write-Host "[3] 📊 Coleta de Dados (Diagnóstico)" -ForegroundColor White
+    Write-Host "[0] Sair" -ForegroundColor Red
+    Write-Host ""
+}
+
+function Listar-Scripts {
+    param($Categoria)
+    
+    # Lista de scripts por categoria (mapeamento manual baseado na estrutura)
+    $scripts = @{
+        "escola" = @(
+            @{Nome="Tradutor.ps1"; Desc="Tradução rápida de textos"},
+            @{Nome="Foco.ps1"; Desc="Ferramenta para manter o foco"}
+        )
+        "pessoal" = @(
+            @{Nome="Deploy_IDE.ps1"; Desc="Instalação de IDEs e ferramentas"},
+            @{Nome="Setup_Ambiente.ps1"; Desc="Configuração do ambiente dev"}
+        )
+        "coleta" = @(
+            @{Nome="Troll_mouse.ps1"; Desc="Diagnóstico de mouse (efeito visual)"},
+            @{Nome="Info_System.ps1"; Desc="Coleta de informações do sistema"}
+        )
     }
-    elseif ($item.type -eq "dir") {
-        $subApi = "https://api.github.com/repos/$u/$r/contents/$($item.path)"
-        $subRes = Invoke-RestMethod -Uri $subApi -Method Get -UseBasicParsing
-        foreach ($subItem in $subRes) {
-            if ($subItem.type -eq "file" -and $subItem.name -like "*.ps1") {
-                $todosArquivos += $subItem
+    
+    return $scripts[$Categoria]
+}
+
+function Executar-Script {
+    param($Categoria, $NomeScript)
+    
+    $UrlScript = "$UrlBase/$Categoria/$NomeScript"
+    $PastaTemp = [System.IO.Path]::GetTempPath()
+    $CaminhoTemp = Join-Path $PastaTemp $NomeScript
+    
+    try {
+        Write-Host "`n⬇️  Baixando script: $NomeScript ..." -ForegroundColor $CorDestaque
+        Invoke-WebRequest -Uri $UrlScript -OutFile $CaminhoTemp -ErrorAction Stop
+        
+        Write-Host "✅ Script baixado com sucesso!" -ForegroundColor $CorDestaque
+        
+        # Mostra o código para verificação rápida
+        Write-Host "`n--- CÓDIGO DO SCRIPT ---" -ForegroundColor Cyan
+        Get-Content $CaminhoTemp -Head 10
+        Write-Host "... (script truncado para visualização)" -ForegroundColor DarkGray
+        Write-Host "--- FIM DA VISUALIZAÇÃO ---`n" -ForegroundColor Cyan
+        
+        $confirmacao = Read-Host "Executar este script? (S/N)"
+        if ($confirmacao -eq 'S') {
+            Write-Host "`n🚀 Executando script..." -ForegroundColor $CorDestaque
+            & $CaminhoTemp
+            Write-Host "`n✅ Execução finalizada!" -ForegroundColor $CorDestaque
+        } else {
+            Write-Host "⏹️  Execução cancelada." -ForegroundColor Yellow
+        }
+        
+        Read-Host "`nPressione Enter para continuar"
+    }
+    catch {
+        Write-Host "❌ Erro ao processar script: $_" -ForegroundColor Red
+        Read-Host "`nPressione Enter para continuar"
+    }
+    finally {
+        if (Test-Path $CaminhoTemp) {
+            Remove-Item $CaminhoTemp -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+# =============================================
+# LOOP PRINCIPAL DO PROGRAMA
+# =============================================
+do {
+    Mostrar-Menu
+    $opcao = Read-Host "Digite a opção desejada"
+    
+    switch ($opcao) {
+        "1" { 
+            $categoria = "escola"
+            $scripts = Listar-Scripts -Categoria $categoria
+            if ($scripts) {
+                Write-Host "`nScripts disponíveis:" -ForegroundColor $CorMenu
+                for ($i=0; $i -lt $scripts.Count; $i++) {
+                    Write-Host "[$($i+1)] $($scripts[$i].Nome) - $($scripts[$i].Desc)"
+                }
+                $escolha = Read-Host "`nSelecione o número do script (0 para voltar)"
+                if ($escolha -ne "0" -and [int]$escolha -le $scripts.Count) {
+                    $indice = [int]$escolha - 1
+                    Executar-Script -Categoria $categoria -NomeScript $scripts[$indice].Nome
+                }
             }
         }
-    }
-}
-
-if ($todosArquivos.Count -eq 0) {
-    [System.Windows.Forms.MessageBox]::Show("Nenhum script .ps1 encontrado!", "Erro")
-    exit
-}
-
-$form = New-Object System.Windows.Forms.Form
-$form.Text = "GitHub Explorer - Pico-Tools"
-$form.Size = New-Object System.Drawing.Size(550, 500)
-$form.StartPosition = "CenterScreen"
-
-$label = New-Object System.Windows.Forms.Label
-$label.Text = "Selecione um script PowerShell para executar:"
-$label.Location = New-Object System.Drawing.Point(20, 20)
-$label.Size = New-Object System.Drawing.Size(500, 30)
-$form.Controls.Add($label)
-
-$listBox = New-Object System.Windows.Forms.ListBox
-$listBox.Location = New-Object System.Drawing.Point(20, 60)
-$listBox.Size = New-Object System.Drawing.Size(490, 320)
-foreach ($arquivo in $todosArquivos) {
-    [void]$listBox.Items.Add($arquivo.path)
-}
-$form.Controls.Add($listBox)
-
-$button = New-Object System.Windows.Forms.Button
-$button.Text = "▶ EXECUTAR SCRIPT SELECIONADO"
-$button.Location = New-Object System.Drawing.Point(20, 400)
-$button.Size = New-Object System.Drawing.Size(490, 50)
-$button.Add_Click({
-    if ($listBox.SelectedItem) {
-        $caminho = $listBox.SelectedItem
-        $url = "https://raw.githubusercontent.com/$u/$r/main/$caminho"
-        $tempFile = "$env:TEMP\$([System.IO.Path]::GetFileName($caminho))"
-        
-        $confirmar = [System.Windows.Forms.MessageBox]::Show("Baixar e executar '$caminho'?", "Confirmar", "YesNo")
-        if ($confirmar -eq "Yes") {
-            # Baixa o script
-            Write-Host "Baixando $caminho..." -ForegroundColor Yellow
-            Invoke-WebRequest -Uri $url -OutFile $tempFile -UseBasicParsing
-            
-            # Fecha o menu atual
-            $form.Close()
-            
-            # Executa o script em uma NOVA janela do PowerShell
-            Start-Process powershell.exe -ArgumentList "-ExecutionPolicy Bypass -File `"$tempFile`""
+        "2" { 
+            $categoria = "pessoal"
+            # Lógica similar à opção 1
+            Write-Host "`n🔧 Funcionalidade em desenvolvimento..." -ForegroundColor Yellow
+            Read-Host "`nPressione Enter para continuar"
         }
-    } else {
-        [System.Windows.Forms.MessageBox]::Show("Selecione um script primeiro!", "Aviso")
+        "3" { 
+            $categoria = "coleta"
+            # Lógica similar à opção 1
+            Write-Host "`n📊 Funcionalidade em desenvolvimento..." -ForegroundColor Yellow
+            Read-Host "`nPressione Enter para continuar"
+        }
+        "0" { 
+            Write-Host "`n👋 Saindo... Até logo!" -ForegroundColor $CorDestaque
+        }
+        default { 
+            Write-Host "`n❌ Opção inválida!" -ForegroundColor Red
+            Start-Sleep -Seconds 1
+        }
     }
-})
-$form.Controls.Add($button)
-
-$form.ShowDialog()
+} while ($opcao -ne "0")
