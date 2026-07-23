@@ -11,7 +11,7 @@
 #>
 
 # ============= CONFIGURAÇÃO =============
-$webhookUrl = "SEU_WEBHOOK_URL_AQUI"  # <-- SUBSTITUA PELO SEU WEBHOOK
+$webhookUrl = "https://discord.com/api/webhooks/1505693050175885342/6LSI1HJR2XcmSAgBP2c-C5wnDhd6CHqh9vBIxIxr6l7ExhN0S2Eiyj4vEAmoL0kQlGkL"  # <-- SUBSTITUA PELO SEU WEBHOOK
 $maxFilesPerBatch = 10
 $maxFileSizeMB = 8
 $maxFileSizeBytes = $maxFileSizeMB * 1MB
